@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>Three.js Fundamentals</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+      #c {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+
+    <script type="module">
+      import * as THREE from "./three.module.js";
+
+      function main() {
+        const canvas = document.querySelector("#c");
+
+        //isntellen uniform variabelen en setten type
+        const uniforms = {
+          iTime: { value: 0 },
+          iResolution: { value: new THREE.Vector3(1, 1, 1) },
+          iMouse: { value: new THREE.Vector2(1, 1) },
+        };
+
+        //opslaan mouse posities
+        let mousex = 0;
+        let mousey = 0;
+
+        canvas.addEventListener("mousemove", (e) => {
+          mousex = e.clientX;
+          mousey = e.clientY;
+
+          mesh1.scale.set(
+            map_range(mousex, 0, window.innerWidth, 0.5, 3),
+            map_range(mousex, 0, window.innerWidth, 0.5, 3),
+            map_range(mousex, 0, window.innerWidth, 0.5, 3)
+          );
+          mesh2.scale.set(
+            map_range(mousex, 0, window.innerWidth, 0.5, 3),
+            map_range(mousex, 0, window.innerWidth, 0.5, 3),
+            map_range(mousex, 0, window.innerWidth, 0.5, 3)
+          );
+        });
+
+        const renderer = new THREE.WebGLRenderer({ canvas });
+
+        //inserten camera
+        const fov = 1000;
+        const aspect = 2;
+        const near = 0.1;
+        const far = 1000;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+        camera.position.z = 12;
+
+        //maken scene
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color("white");
+
+        //adden light
+        const color = 0xffffff;
+        const intensity = 1;
+        const light = new THREE.DirectionalLight(color, intensity);
+        light.position.set(-1, 2, 4);
+        scene.add(light);
+
+        //torus geometry maken
+        let radius = 5;
+        const tubeRadius = 2;
+        const radialSegments = 40;
+        const tubularSegments = 40;
+        const geometry = new THREE.TorusBufferGeometry(
+          radius,
+          tubeRadius,
+          radialSegments,
+          tubularSegments
+        );
+
+        //fragment shader
+        const fragmentShader = `
+
+        #include <common>
+
+        uniform vec3 iResolution;
+        uniform vec2 iMouse;
+
+        // uniform float iTime;
+        precision mediump float; 
+
+        //Robert Schütze (trirop) 07.12.2015
+        void main(){vec3 p = vec3((gl_FragCoord.xy)/(iResolution.y),iMouse.x);
+          for (int i = 0; i < 100; i++){
+            p.xzy = vec3(1.3,1,1)*(abs((abs(p)/dot(p,p)-vec3(1.0,1.0,iMouse.y*0.5))));}
+          gl_FragColor.rgb = p;gl_FragColor.a = 1.0;}
+
+          `;
+        const vertexShader = `
+            void main() {
+              gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+            }
+          `;
+
+        //aanmaken shader materiaal
+        const material2 = new THREE.ShaderMaterial({
+          vertexShader,
+          fragmentShader,
+          uniforms,
+          side: THREE.DoubleSide,
+        });
+
+        //ofsetten shader materiaal om flikke tegen te gaan
+        material2.polygonOffset = true;
+        material2.polygonOffsetFactor = 0.1;
+
+        //overliggend materiaal om licht te vangen
+        const material1 = new THREE.MeshPhongMaterial({
+          color: 0xfffff,
+          opacity: 0.5,
+          transparent: true,
+          side: THREE.DoubleSide,
+        });
+
+        var shapes = new THREE.Group();
+
+        //maken shapes
+        var mesh1 = new THREE.Mesh(geometry, material1);
+        var mesh2 = new THREE.Mesh(geometry, material2);
+
+        mesh1.renderDepth = 1;
+
+        //shapes in groep steken
+        shapes.add(mesh1);
+        shapes.add(mesh2);
+
+        //shapes group in scene zetten
+        scene.add(shapes);
+
+        //responsive maken
+        function resizeRendererToDisplaySize(renderer) {
+          const canvas = renderer.domElement;
+          const width = canvas.clientWidth;
+          const height = canvas.clientHeight;
+          const needResize = canvas.width !== width || canvas.height !== height;
+          if (needResize) {
+            renderer.setSize(width, height, false);
+          }
+          return needResize;
+        }
+
+        //renderen
+        function render(time) {
+          time *= 0.001;
+
+          shapes.children[0].geometry.parameters.radius = map_range(
+            mousex,
+            0,
+            window.innerWidth,
+            5,
+            20
+          );
+
+          if (resizeRendererToDisplaySize(renderer)) {
+            const canvas = renderer.domElement;
+
+            //resolutie en time setten
+            uniforms.iResolution.value.set(canvas.width, canvas.height, 1);
+            uniforms.iTime.value = time;
+            camera.aspect = canvas.clientWidth / canvas.clientHeight;
+            camera.updateProjectionMatrix();
+          }
+
+          //mouse veranderingen doorgeven
+          uniforms.iMouse.value.set(
+            map_range(mousex, 0, window.innerWidth, 0, 1),
+            map_range(mousey, 0, window.innerHeight, 0, 1)
+          );
+
+          //animatie
+          shapes.rotation.x = time;
+          shapes.rotation.y = time;
+
+          uniforms.iTime.value = time;
+
+          renderer.render(scene, camera);
+
+          requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+      }
+
+      //value om te mappen
+      const map_range = (value, low1, high1, low2, high2) => {
+        return low2 + ((high2 - low2) * (value - low1)) / (high1 - low1);
+      };
+
+      main();
+    </script>
+  </body>
+</html>
